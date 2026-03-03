@@ -18,9 +18,8 @@ def get_survey_math(df):
         p2 = (df.iloc[(i+1)%len(df)]['E'], df.iloc[(i+1)%len(df)]['N'])
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
         
-        # Calculate angle for DMS and for Label Rotation
+        # Calculate angle for rotation
         raw_angle = np.degrees(np.arctan2(p2[0]-p1[0], p2[1]-p1[1])) % 360
-        # Math for label rotation (adjusting to keep text upright)
         rotation = 90 - raw_angle
         if rotation < -90: rotation += 180
         if rotation > 90: rotation -= 180
@@ -31,7 +30,7 @@ def get_survey_math(df):
     return distances, bearings, angles
 
 def transform_coords_johor(e, n):
-    # Using EPSG:4390 for Johor Cassini as per PA 143912
+    # Using Johor Cassini Grid
     transformer = Transformer.from_crs("epsg:4390", "epsg:4326", always_xy=True)
     lon, lat = transformer.transform(e, n)
     return lat, lon
@@ -39,95 +38,113 @@ def transform_coords_johor(e, n):
 # --- PAGE SETUP ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- CUSTOM CSS (Bigger White Title) ---
+# --- CUSTOM CSS (Massive White Title) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b172a; color: white; }
     .header-box {
-        background: #1e293b; padding: 25px; border-radius: 15px;
-        border-bottom: 5px solid #38bdf8; margin-bottom: 25px;
-        display: flex; align-items: center;
+        background: rgba(30, 41, 59, 0.8); padding: 40px; border-radius: 20px;
+        border-left: 10px solid #38bdf8; margin-bottom: 30px;
     }
-    .main-title { color: #FFFFFF !important; font-size: 52px; font-weight: 900; margin: 0; line-height: 1; }
-    .surveyor-tag { color: #38bdf8 !important; font-size: 24px; font-weight: bold; margin-top: 10px; }
+    .main-title { color: #FFFFFF !important; font-size: 64px; font-weight: 900; margin: 0; letter-spacing: -2px; }
+    .surveyor-tag { color: #38bdf8 !important; font-size: 28px; font-weight: 500; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- HEADER ---
-st.markdown('<div class="header-box">', unsafe_allow_html=True)
-col_logo, col_title = st.columns([1, 5])
-with col_logo:
-    if os.path.exists("logo_puo.png"):
-        st.image("logo_puo.png", width=180)
-with col_title:
-    st.markdown('<p class="main-title">POLITEKNIK UNGKU OMAR</p>', unsafe_allow_html=True)
-    st.markdown('<p class="surveyor-tag">Surveyor: Tamilkumaran</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown(f"""
+    <div class="header-box">
+        <p class="main-title">POLITEKNIK UNGKU OMAR</p>
+        <p class="surveyor-tag">Surveyor: Tamilkumaran</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📂 Upload 'point.csv'", type="csv")
 
 if uploaded_file:
-    # 1. DATA PROCESSING
+    # 1. DATA PREP
     df = pd.read_csv(uploaded_file).sort_values(by='STN')
     df['lat'], df['lon'] = transform_coords_johor(df['E'].values, df['N'].values)
     dist, bear, rot = get_survey_math(df)
     df['Distance'], df['Bearing'], df['Rotation'] = dist, bear, rot
-    area_m2 = calculate_area(df['E'].values, df['N'].values)
+    area_val = calculate_area(df['E'].values, df['N'].values)
 
-    # 2. SIDEBAR (Only visible after upload)
+    # 2. LEFT SIDE CONTROL PANEL
     with st.sidebar:
-        st.header("🎮 Display Settings")
-        stn_txt_size = st.slider("STN Text Size", 8, 20, 12)
-        dim_txt_size = st.slider("Bearing/Dist Size", 6, 16, 9)
-        marker_rad = st.slider("Marker Point Size", 2, 12, 5)
-        map_zoom = st.slider("Initial Zoom", 18, 22, 21)
+        if os.path.exists("logo_puo.png"):
+            st.image("logo_puo.png", width=220)
+        
+        st.title("🛠️ Display Controls")
+        show_sat = st.toggle("Enable Google Satellite", value=True)
+        show_labels = st.toggle("Show Map Labels", value=True)
+        
+        st.markdown("---")
+        st.subheader("📏 Size Adjustments")
+        stn_size = st.slider("STN Text", 8, 24, 14)
+        dim_size = st.slider("Bearing/Distance Text", 6, 20, 10)
+        marker_rad = st.slider("Point Radius", 2, 15, 6)
+        
+        st.markdown("---")
+        if st.button("🚪 Logout"):
+            st.session_state.clear()
+            st.rerun()
 
-    # 3. MAP LAYOUT
-    col_map, col_data = st.columns([3, 1])
-    with col_map:
-        m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=map_zoom, max_zoom=22)
+    # 3. INTERACTIVE MAP
+    m = folium.Map(
+        location=[df['lat'].mean(), df['lon'].mean()], 
+        zoom_start=20, 
+        max_zoom=22,
+        tiles=None # Start with blank to apply toggle
+    )
 
-        # GOOGLE LAYERS
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', 
-                         attr='Google', name='Google Satellite', max_zoom=22, max_native_zoom=20).add_to(m)
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                         attr='Google', name='Google Hybrid', max_zoom=22, max_native_zoom=20).add_to(m)
+    # Apply Satellite Toggle from Sidebar
+    if show_sat:
+        folium.TileLayer(
+            tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+            attr='Google', name='Google Hybrid', max_zoom=22, overlay=False
+        ).add_to(m)
+    else:
+        folium.TileLayer('OpenStreetMap', name='Street Map').add_to(m)
 
-        # POLYGON
-        poly_pts = [[row['lat'], row['lon']] for _, row in df.iterrows()]
-        folium.Polygon(locations=poly_pts, color="yellow", weight=3, fill=True, fill_opacity=0.15).add_to(m)
+    # Draw Boundary
+    poly_pts = [[row['lat'], row['lon']] for _, row in df.iterrows()]
+    folium.Polygon(locations=poly_pts, color="yellow", weight=4, fill=True, fill_opacity=0.1).add_to(m)
 
-        # STATIONS & DYNAMIC LABELS
-        for i, row in df.iterrows():
-            # Marker with Coordinate Hover (Tooltip)
-            folium.CircleMarker(
-                location=[row['lat'], row['lon']], 
-                radius=marker_rad, color="#ef4444", fill=True,
-                tooltip=f"E: {row['E']:.3f}, N: {row['N']:.3f}" # THE HOVER FEATURE
-            ).add_to(m)
-            
-            # STN Number
+    # Station Marks & Labels
+    for i, row in df.iterrows():
+        # Hover coordinate feature
+        folium.CircleMarker(
+            location=[row['lat'], row['lon']], 
+            radius=marker_rad, color="#ef4444", fill=True,
+            tooltip=f"Coordinate: E {row['E']:.3f}, N {row['N']:.3f}"
+        ).add_to(m)
+        
+        if show_labels:
+            # Clean STN Label
             folium.Marker([row['lat'], row['lon']],
-                icon=folium.DivIcon(html=f'<div style="font-size:{stn_txt_size}pt; color:white; font-weight:bold; text-shadow:1px 1px black;">{int(row["STN"])}</div>')
+                icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')
             ).add_to(m)
             
-            # Aligned Bearing & Distance (Kemas & Allign)
+            # Aligned Dimensions
             next_p = df.iloc[(i+1)%len(df)]
             m_lat, m_lon = (row['lat']+next_p['lat'])/2, (row['lon']+next_p['lon'])/2
             folium.Marker([m_lat, m_lon],
                 icon=folium.DivIcon(html=f"""
                     <div style="transform: rotate({row['Rotation']}deg); 
-                                font-size:{dim_txt_size}pt; color:#38bdf8; font-weight:bold; 
-                                background:rgba(0,0,0,0.5); padding:2px; white-space:nowrap; 
-                                text-align:center; border-radius:3px;">
+                                font-size:{dim_size}pt; color:#38bdf8; font-weight:bold; 
+                                background:rgba(0,0,0,0.7); padding:4px; border-radius:5px;
+                                white-space:nowrap; border: 1px solid #38bdf8;">
                         {row['Bearing']} | {row['Distance']}m
                     </div>""")
             ).add_to(m)
 
-        folium.LayerControl(position='topright', collapsed=False).add_to(m)
-        folium_static(m, width=1000, height=650)
+    # Display Map and Data
+    st.subheader("🛰️ Live Survey Visualization")
+    folium_static(m, width=1100, height=650)
+    
+    col1, col2 = st.columns([1, 1])
+    col1.metric("TOTAL LOT AREA", f"{area_val:.3f} m²")
+    col2.dataframe(df[['STN', 'Distance', 'Bearing']], hide_index=True, use_container_width=True)
 
-    with col_data:
-        st.metric("TOTAL AREA", f"{area_m2:.3f} m²")
-        st.write("**Location:** Mukim Kesang, Johor")
-        st.dataframe(df[['STN', 'Distance', 'Bearing']], hide_index=True)
+else:
+    st.info("👋 Welcome! Please upload your 'point.csv' to view the Professional GIS Layout.")
