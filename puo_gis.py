@@ -1,153 +1,147 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import folium
 from streamlit_folium import folium_static
 import numpy as np
 import json
 import os
+from pyproj import Transformer
 
 # --- CORE FUNCTIONS ---
 def calculate_area(x, y):
     """Calculates polygon area using the Shoelace formula."""
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="PUO GIS - Integrated Overlay", layout="wide")
+def transform_johor_coords(e, n):
+    """Transforms Johor Cassini (EPSG:3168) to WGS84."""
+    transformer = Transformer.from_crs("epsg:3168", "epsg:4326")
+    lat, lon = transformer.transform(e, n)
+    return lat, lon
 
-# --- CLASSY STYLING (Task 1) ---
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="PUO GIS | Tamilkumaran", layout="wide", initial_sidebar_state="expanded")
+
+# --- CUSTOM CSS (The "Cool" Factor) ---
 st.markdown("""
     <style>
-    .main { background-color: #0f172a; color: white; }
-    .header-container {
-        background-color: #1e293b; 
-        padding: 40px; 
-        border-radius: 0px 0px 20px 20px; 
-        margin-bottom: 30px;
-        border-bottom: 5px solid #38bdf8;
+    .stApp { background-color: #0b0f19; color: #e2e8f0; }
+    .header-box {
+        background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%);
+        padding: 35px;
+        border-radius: 15px;
+        border-left: 10px solid #38bdf8;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        margin-bottom: 25px;
     }
-    .header-title { color: #ffffff !important; font-size: 48px; font-weight: bold; margin: 0; }
-    .report-title { color: #22d3ee !important; text-align: center; font-weight: bold; font-size: 35px; }
-    
-    div.stButton > button {
-        background-color: #38bdf8;
-        color: #0f172a;
-        font-weight: bold;
-        height: 3.5em;
-        width: 100%;
-        border-radius: 8px;
-    }
+    .main-title { color: #ffffff; font-size: 42px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
+    .surveyor-tag { color: #38bdf8; font-size: 24px; font-weight: 600; margin-top: 5px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+    .metric-card { background: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR (Task 1-4 Persistent Controls) ---
-st.sidebar.title("⚙️ Map Settings")
-show_satellite = st.sidebar.checkbox("🛰️ Open Satellite Layer (On/Off)", value=True)
-st.sidebar.markdown("---")
-st.sidebar.title("🏷️ Label Settings")
-show_stn_labels = st.sidebar.checkbox("Display Station Labels (STN)", value=True)
-show_area_label = st.sidebar.checkbox("Display Area Label", value=True)
+# --- SIDEBAR: INTERACTIVE CONTROLS ---
+with st.sidebar:
+    st.header("🛠️ Map Controls")
+    map_type = st.radio("Select Base Map", ["Modern Street Map", "Satellite Imagery"])
+    st.divider()
+    st.header("🏷️ Overlays")
+    show_labels = st.checkbox("Show Station IDs", value=True)
+    show_area_box = st.checkbox("Show Professional Info Box", value=True)
+    st.info("Location: Mukim Kesang, Johor ")
 
-# --- TASK 1: BRANDING ---
-st.markdown('<div class="header-container">', unsafe_allow_html=True)
-col_logo, col_title = st.columns([2.5, 3])
-with col_logo:
-    if os.path.exists("logo_puo.png"):
-        st.image("logo_puo.png", width=450) # Extra-Large Logo
-with col_title:
-    st.write("##") 
-    st.markdown('<p class="header-title">POLITEKNIK UNGKU OMAR</p>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#94a3b8; font-size: 20px;">Civil Engineering GIS Dashboard</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# --- TASK 1: THE COOL HEADER ---
+st.markdown(f"""
+    <div class="header-box">
+        <p class="main-title">Politeknik Ungku Omar</p>
+        <p class="surveyor-tag">Surveyor: Tamilkumaran</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# --- FILE UPLOADER ---
-uploaded_file = st.file_uploader("📂 Upload Survey Data (point.csv)", type="csv")
+# --- DATA INPUT ---
+uploaded_file = st.file_uploader("📂 Drop your 'point.csv' here", type="csv")
 
 if uploaded_file:
+    # Read the provided survey data [cite: 1]
     df = pd.read_csv(uploaded_file).sort_values(by='STN')
     
-    # State management to keep results visible
-    if 'active' not in st.session_state:
-        st.session_state.active = False
+    # Run Calculations & Transformations 
+    e_vals, n_vals = df['E'].values, df['N'].values
+    area_m2 = calculate_area(e_vals, n_vals)
+    df['lat'], df['lon'] = transform_johor_coords(df['E'].values, df['N'].values)
 
-    if st.button("🚀 GENERATE INTEGRATED ANALYSIS"):
-        st.session_state.active = True
-
-    if st.session_state.active:
-        x, y = df['E'].values, df['N'].values
-        area_val = calculate_area(x, y)
+    # --- THE INTERACTIVE DASHBOARD ---
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("Total Survey Area", f"{area_m2:.3f} m²")
+        st.write(f"**Lots:** 11462 - 11487 ")
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # --- TASK 4: BRIGHT REPORT TITLE ---
-        st.divider()
-        st.markdown('<p class="report-title">📊 INTEGRATED SURVEY ANALYSIS REPORT</p>', unsafe_allow_html=True)
-        
-        col_res, col_tab = st.columns([1, 2])
-        with col_res:
-            st.metric("CALCULATED AREA", f"{area_val:.3f} m²")
-            # TASK 2: EXPORT
-            coords_geo = [[float(row['E']), float(row['N'])] for _, row in df.iterrows()]
-            coords_geo.append(coords_geo[0])
-            geojson = {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[coords_geo]}}]}
-            st.download_button("📥 Download GeoJSON for QGIS", json.dumps(geojson), "puo_survey.geojson")
+        st.write("### 📥 Task 2: Data Export")
+        geojson_data = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"Surveyor": "Tamilkumaran", "Area": area_m2},
+                "geometry": {"type": "Polygon", "coordinates": [[[r['lon'], r['lat']] for _, r in df.iterrows()] + [[df.iloc[0]['lon'], df.iloc[0]['lat']]]]}
+            }]
+        }
+        st.download_button("Download GeoJSON", json.dumps(geojson_data), "tamilkumaran_survey.geojson", use_container_width=True)
 
-        with col_tab:
-            st.write("### 📋 Coordinate Table")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+    with col2:
+        st.write("### 📋 Surveyor's Log (Cassini to WGS84)")
+        st.dataframe(df[['STN', 'E', 'N', 'lat', 'lon']], hide_index=True, use_container_width=True)
 
-        st.divider()
+    st.divider()
 
-        # --- TASK 3 & 4: OVERLAY SATELLITE MAP ---
-        st.subheader("🛰️ Integrated Satellite Overlay")
-        
-        # Use simple mean for centering (assuming Lat/Lon data in point.csv)
-        m = folium.Map(location=[df['N'].mean(), df['E'].mean()], zoom_start=18)
-        
-        if show_satellite:
-            folium.TileLayer(
-                tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', 
-                attr='Google', 
-                name='Google Satellite'
-            ).add_to(m)
+    # --- TASK 3 & 4: THE INTERACTIVE OVERLAY MAP ---
+    st.write("### 🗺️ Live Interactive Geospatial View")
+    
+    # Initialize Map
+    center_lat, center_lon = df['lat'].mean(), df['lon'].mean()
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=19, tiles=None)
 
-        # Draw the Polygon directly on the map
-        poly_points = [[row['N'], row['E']] for _, row in df.iterrows()]
-        folium.Polygon(
-            locations=poly_points,
-            color="#22d3ee",
-            weight=4,
-            fill=True,
-            fill_color="#22d3ee",
-            fill_opacity=0.4
+    # Map Type Switcher
+    if map_type == "Satellite Imagery":
+        folium.TileLayer(
+            tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', 
+            attr='Google', name='Google Satellite', overlay=False, control=True
         ).add_to(m)
+    else:
+        folium.TileLayer('cartodbpositron', name='Street Map').add_to(m)
 
-        # Station Labels Overlay
-        if show_stn_labels:
-            for _, row in df.iterrows():
-                folium.Marker(
-                    location=[row['N'], row['E']],
-                    icon=folium.DivIcon(html=f"""
-                        <div style="font-family: sans-serif; color: white; font-weight: bold; 
-                        background-color: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 3px;
-                        border: 1px solid white; white-space: nowrap;">
-                            STN {int(row['STN'])}
-                        </div>
-                    """)
-                ).add_to(m)
+    # The Interactive Polygon Overlay
+    poly_coords = [[row['lat'], row['lon']] for _, row in df.iterrows()]
+    folium.Polygon(
+        locations=poly_coords,
+        color="#38bdf8", weight=5, fill=True, fill_color="#38bdf8", fill_opacity=0.4,
+        tooltip=f"Lot Area: {area_m2:.3f} m²"
+    ).add_to(m)
 
-        # Area Label Overlay in the center
-        if show_area_label:
-            folium.Marker(
-                location=[df['N'].mean(), df['E'].mean()],
-                icon=folium.DivIcon(html=f"""
-                    <div style="background: white; border: 3px solid black; padding: 10px; 
-                    font-weight: bold; color: black; width: 180px; text-align: center; 
-                    border-radius: 5px; font-size: 14px;">
-                        AREA:<br>{area_val:.3f} m²
-                    </div>
-                """)
+    # Station Markers
+    if show_labels:
+        for _, row in df.iterrows():
+            folium.CircleMarker(
+                location=[row['lat'], row['lon']],
+                radius=6, color="#ffffff", fill=True, fill_color="#ef4444", fill_opacity=1,
+                popup=f"STN {int(row['STN'])}<br>E: {row['E']}<br>N: {row['N']}"
             ).add_to(m)
 
-        folium_static(m, width=1200, height=600)
+    # Floating Info Box (The "Cool" Letterbox)
+    if show_area_box:
+        info_html = f"""
+        <div style="position: fixed; bottom: 50px; left: 50px; width: 250px; z-index:9999; 
+        background: white; padding: 15px; border-radius: 10px; border: 3px solid #0f172a; 
+        box-shadow: 5px 5px 15px rgba(0,0,0,0.3); font-family: Arial;">
+            <b style="color:#0f172a; font-size:14px;">MUKIM KESANG, JOHOR </b><br>
+            <span style="color:#64748b;">Surveyor: Tamilkumaran</span><br>
+            <hr style="margin: 5px 0;">
+            <span style="font-size:16px; font-weight:bold; color:#0f172a;">AREA: {area_m2:.3f} m²</span>
+        </div>
+        """
+        st.markdown(info_html, unsafe_allow_html=True)
 
+    folium_static(m, width=1300, height=650)
 else:
-    st.info("👋 Welcome! Please upload your 'point.csv' file to begin.")
+    st.info("👋 Welcome back, Tamilkumaran. Please upload your survey data (point.csv) to activate the dashboard.")
