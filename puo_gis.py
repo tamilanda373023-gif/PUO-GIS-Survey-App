@@ -3,7 +3,8 @@ import pandas as pd
 import folium
 from streamlit_folium import folium_static
 import numpy as np
-import os
+import base64
+import requests
 from pyproj import Transformer
 
 # --- CORE CALCULATIONS ---
@@ -12,25 +13,16 @@ def calculate_area(x, y):
 
 def get_survey_math(df):
     distances, bearings, angles = [], [], []
-    # Ensure we loop through the stations in the exact order provided in the CSV
     for i in range(len(df)):
-        # Start point (p1) and Next point (p2)
         p1 = (df.iloc[i]['E'], df.iloc[i]['N'])
-        # If it's the last point, connect back to the first point to close the lot
         next_idx = (i + 1) % len(df)
         p2 = (df.iloc[next_idx]['E'], df.iloc[next_idx]['N'])
         
-        # 1. Distance Calculation
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
-        
-        # 2. Bearing Calculation (Azimuth)
         dz = p2[0] - p1[0] 
         dn = p2[1] - p1[1] 
         angle_deg = np.degrees(np.arctan2(dz, dn)) % 360
         
-        # 3. Rotation Logic for Text (PA Style)
-        # We align text to the line segment. If the line is 180-360 deg, 
-        # we flip the text so it is never upside down (Kemas).
         rotation = 90 - angle_deg
         if rotation > 90: rotation -= 180
         if rotation < -90: rotation += 180
@@ -53,7 +45,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #0b172a; color: white; }
     .hero-container {
-        display: flex; align-items: center; padding: 40px 40px;
+        display: flex; align-items: center; padding: 30px 40px;
         background: #1e293b; margin-bottom: 30px;
         border-radius: 15px; border-bottom: 6px solid #38bdf8;
     }
@@ -64,19 +56,21 @@ st.markdown("""
         margin-left: 20px; text-transform: uppercase;
     }
     .middle-system-title {
-        color: #FFFFFF !important; font-size: 55px; font-weight: 900;
+        color: #FFFFFF !important; font-size: 50px; font-weight: 900;
         text-transform: uppercase; margin: 0;
     }
     .surveyor-credit { color: #38bdf8 !important; font-size: 18px; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER ---
-puo_logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/600px-Logo_PUO.png"
+# --- HEADER WITH ROBUST LOGO LOADING ---
+# If the logo is in your local folder, use that. Otherwise, it uses a fallback.
+logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png"
+
 st.markdown(f"""
     <div class="hero-container">
         <div class="left-branding">
-            <img src="{puo_logo_url}" width="100">
+            <img src="{logo_url}" width="100" onerror="this.src='https://via.placeholder.com/100?text=PUO+LOGO'">
             <p class="poli-name-text">POLITEKNIK UNGKU OMAR</p>
         </div>
         <div class="center-branding">
@@ -87,10 +81,11 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
+# --- FILE UPLOADER ---
 uploaded_file = st.file_uploader("📂 UPLOAD 'point.csv' TO ACTIVATE CONTROLS AND MAP", type="csv")
 
 if uploaded_file:
-    # Use exact order from CSV to prevent "Out of Order" lines
+    # Use order from CSV (No sorting to keep lines correct)
     df = pd.read_csv(uploaded_file)
     df['lat'], df['lon'] = transform_coords_johor(df['E'].values, df['N'].values)
     dist, bear, rot = get_survey_math(df)
@@ -105,10 +100,8 @@ if uploaded_file:
         stn_size = st.slider("Station ID Size", 8, 30, 15)
         dim_size = st.slider("Bering/Distance Size", 6, 20, 11)
         marker_rad = st.slider("Marker Point Size", 2, 20, 8)
-        if st.button("🚪 Logout"):
-            st.session_state.clear()
-            st.rerun()
 
+    # MAP
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=22, tiles=None)
 
     if sat_mode:
@@ -117,20 +110,21 @@ if uploaded_file:
     else:
         folium.TileLayer('cartodbpositron', name='Clean Map').add_to(m)
 
-    # 4. ORDERED LOT BOUNDARY
+    # Ordered Boundary
     poly_pts = [[row['lat'], row['lon']] for _, row in df.iterrows()]
     folium.Polygon(locations=poly_pts, color="#FBFF00", weight=4, fill=True, fill_opacity=0.15).add_to(m)
 
-    # 5. ORDERED LABELLING
+    # Labeling in Order
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="#FF0000", fill=True,
                             tooltip=f"COORDS: E {row['E']:.3f}, N {row['N']:.3f}").add_to(m)
         
         if label_mode:
+            # Station Label
             folium.Marker([row['lat'], row['lon']],
                 icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
-            # Place Dimension exactly on the current line (Current Point to Next Point)
+            # Distance/Bearing aligned to specific line
             next_idx = (i + 1) % len(df)
             next_p = df.iloc[next_idx]
             m_lat, m_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
