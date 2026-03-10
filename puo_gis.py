@@ -126,9 +126,10 @@ if uploaded_file:
         map_type = st.radio("🗺️ Map Layer", ["Satellite", "Satellite Hybrid", "Street Map"])
         label_mode = st.toggle("📍 Show Labels", value=True)
         st.markdown("---")
-        stn_size = st.slider("Station ID Size", 8, 30, 15)
-        dim_size = st.slider("Bearing/Distance Size", 6, 20, 11)
-        marker_rad = st.slider("Marker Point Size", 2, 20, 8)
+        # Fixed initial values to be smaller
+        stn_size = st.slider("Station ID Size", 8, 30, 10)
+        dim_size = st.slider("Bearing/Distance Size", 6, 20, 8)
+        marker_rad = st.slider("Marker Point Size", 2, 20, 5)
         st.markdown("---")
         if st.button("🚪 Logout"):
             st.session_state.logged_in = False
@@ -141,14 +142,20 @@ if uploaded_file:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
         st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8;">LOT AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # --- FOLIUM MAP ---
-    m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None)
+    # --- FOLIUM MAP (Zoom Enabled) ---
+    m = folium.Map(
+        location=[df['lat'].mean(), df['lon'].mean()], 
+        zoom_start=19, 
+        tiles=None,
+        scrollWheelZoom=True, # FIXED: Enable scroll zoom
+        dragging=True         # FIXED: Ensure map can be moved
+    )
 
-    # Adding Map Layers
+    # Map Layers
     if map_type == "Satellite":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite', max_zoom=22).add_to(m)
     elif map_type == "Satellite Hybrid":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Hybrid').add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Hybrid', max_zoom=22).add_to(m)
     else:
         folium.TileLayer('OpenStreetMap', name='Street Map').add_to(m)
 
@@ -156,14 +163,11 @@ if uploaded_file:
     folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=4, fill=True, fill_opacity=0.15).add_to(m)
 
     for i, row in df.iterrows():
-        # Points
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
         
         if label_mode:
-            # Station Label (Stay at the point)
             folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black; width:100px;">{int(row["STN"])}</div>')).add_to(m)
             
-            # Line Labels (Horizontal with White Background)
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             
@@ -171,7 +175,7 @@ if uploaded_file:
                 <div style="
                     background-color: white; 
                     border: 1px solid black; 
-                    padding: 2px 5px; 
+                    padding: 2px 4px; 
                     border-radius: 3px; 
                     font-size: {dim_size}pt; 
                     color: black; 
@@ -179,6 +183,7 @@ if uploaded_file:
                     white-space: nowrap; 
                     text-align: center;
                     display: inline-block;
+                    box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
                 ">
                     {row['Bearing']}<br>{row['Distance']}m
                 </div>""")).add_to(m)
