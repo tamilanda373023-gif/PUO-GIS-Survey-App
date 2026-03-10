@@ -6,6 +6,10 @@ import numpy as np
 import os
 from pyproj import Transformer
 
+# --- LOGIN SESSION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
 # --- CORE CALCULATIONS ---
 def calculate_area(x, y):
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
@@ -13,24 +17,15 @@ def calculate_area(x, y):
 def get_survey_math(df):
     distances, bearings, angles = [], [], []
     for i in range(len(df)):
-        # Point 1 to Point 2 (Sequential)
         p1 = (df.iloc[i]['E'], df.iloc[i]['N'])
         next_idx = (i + 1) % len(df)
         p2 = (df.iloc[next_idx]['E'], df.iloc[next_idx]['N'])
-        
-        # Distance
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
-        
-        # Bearing
-        dz = p2[0] - p1[0] 
-        dn = p2[1] - p1[1] 
+        dz, dn = p2[0] - p1[0], p2[1] - p1[1] 
         angle_deg = np.degrees(np.arctan2(dz, dn)) % 360
-        
-        # PA Alignment Rotation
         rotation = 90 - angle_deg
         if rotation > 90: rotation -= 180
         if rotation < -90: rotation += 180
-        
         distances.append(round(dist, 3))
         bearings.append(f"{int(angle_deg)}° {int((angle_deg%1)*60)}'")
         angles.append(rotation)
@@ -44,60 +39,59 @@ def transform_coords_johor(e, n):
 # --- PAGE SETUP ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- CSS (Massive White Text & Flex Layout) ---
+# --- LOGIN SCREEN ---
+if not st.session_state.logged_in:
+    st.markdown("""
+        <style>
+        .stApp { background-color: #0b172a; }
+        .login-box {
+            max-width: 400px; margin: 100px auto; padding: 40px;
+            background: #1e293b; border-radius: 15px; border: 2px solid #38bdf8;
+            text-align: center; color: white; font-family: sans-serif;
+        }
+        .stButton>button { width: 100%; background-color: #38bdf8; color: white; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.title("🔐 PUO GIS LOGIN")
+        pwd = st.text_input("Enter Password", type="password")
+        if st.button("Access System"):
+            if pwd == "12345678":
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Incorrect Password")
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# --- MAIN DASHBOARD STYLE ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b172a; color: white; }
-    
     .hero-container {
-        display: flex;
-        align-items: center;
-        padding: 30px 40px;
-        background: #1e293b; 
-        margin-bottom: 30px;
-        border-radius: 15px;
-        border-bottom: 6px solid #38bdf8;
+        display: flex; align-items: center; padding: 30px 40px;
+        background: #1e293b; margin-bottom: 30px;
+        border-radius: 15px; border-bottom: 6px solid #38bdf8;
     }
-    
-    .left-branding {
-        display: flex;
-        align-items: center;
-        flex: 1.5;
-    }
-
-    .center-branding {
-        flex: 2;
-        text-align: center;
-    }
-
+    .left-branding { display: flex; align-items: center; flex: 1.5; }
+    .center-branding { flex: 2; text-align: center; }
     .poli-name-text { 
-        color: #FFFFFF !important; 
-        font-size: 28px; 
-        font-weight: 800; 
-        margin-left: 20px;
-        text-transform: uppercase;
+        color: #FFFFFF !important; font-size: 28px; font-weight: 800; 
+        margin-left: 20px; text-transform: uppercase;
     }
-
     .middle-system-title {
-        color: #FFFFFF !important;
-        font-size: 50px;
-        font-weight: 900;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        margin: 0;
+        color: #FFFFFF !important; font-size: 50px; font-weight: 900;
+        text-transform: uppercase; margin: 0;
     }
-    
-    .surveyor-credit { 
-        color: #38bdf8 !important; 
-        font-size: 18px;
-        margin-top: 5px;
-    }
+    .surveyor-credit { color: #38bdf8 !important; font-size: 18px; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER (REPLACE URL BELOW WITH YOUR GITHUB RAW LINK) ---
-# Format: https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/logo_puo.png
-github_logo_url = "https://raw.githubusercontent.com/TamilkumaranPUO/your-repo-name/main/logo_puo.png" 
+# --- THE LOGO FIX ---
+# REPLACE THE URL BELOW with your GitHub Raw URL
+github_logo_url = "https://raw.githubusercontent.com/TamilkumaranPUO/YOUR_REPO/main/logo_puo.png"
 
 st.markdown(f"""
     <div class="hero-container">
@@ -113,58 +107,45 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- WORKFLOW ---
 uploaded_file = st.file_uploader("📂 UPLOAD 'point.csv' TO ACTIVATE CONTROLS", type="csv")
 
 if uploaded_file:
-    df = pd.read_csv(uploaded_file) # Sequential order preserved
+    df = pd.read_csv(uploaded_file)
     df['lat'], df['lon'] = transform_coords_johor(df['E'].values, df['N'].values)
     dist, bear, rot = get_survey_math(df)
     df['Distance'], df['Bearing'], df['Rotation'] = dist, bear, rot
     area_val = calculate_area(df['E'].values, df['N'].values)
 
-    # Display controller appears only after file insert
     with st.sidebar:
         st.header("🕹️ DISPLAY CONTROLLER")
         sat_mode = st.toggle("🛰️ Google Satellite", value=True)
         label_mode = st.toggle("📍 Show Labels", value=True)
-        st.markdown("---")
         stn_size = st.slider("Station ID Size", 8, 30, 15)
         dim_size = st.slider("Bering/Distance Size", 6, 20, 11)
         marker_rad = st.slider("Marker Point Size", 2, 20, 8)
+        if st.button("🚪 Logout"):
+            st.session_state.logged_in = False
+            st.rerun()
 
-    # MAP
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=20, max_zoom=22, tiles=None)
-
     if sat_mode:
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                         attr='Google', name='Satellite', max_zoom=22, overlay=False).add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     else:
-        folium.TileLayer('cartodbpositron', name='Clean Map').add_to(m)
+        folium.TileLayer('cartodbpositron').add_to(m)
 
     poly_pts = [[row['lat'], row['lon']] for _, row in df.iterrows()]
     folium.Polygon(locations=poly_pts, color="#FBFF00", weight=4, fill=True, fill_opacity=0.15).add_to(m)
 
     for i, row in df.iterrows():
-        folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="#FF0000", fill=True,
-                            tooltip=f"COORDS: E {row['E']:.3f}, N {row['N']:.3f}").add_to(m)
-        
+        folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="#FF0000", fill=True).add_to(m)
         if label_mode:
-            folium.Marker([row['lat'], row['lon']],
-                icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')).add_to(m)
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
-            # Distance/Bearing aligned to specific line
+            # Distance/Bearing alignment for specific line segment
             next_idx = (i + 1) % len(df)
             next_p = df.iloc[next_idx]
             m_lat, m_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
-            
-            folium.Marker([m_lat, m_lon],
-                icon=folium.DivIcon(html=f"""
-                    <div style="transform: rotate({row['Rotation']}deg) translateY(-12px); 
-                                font-size:{dim_size}pt; color:#38bdf8; font-weight:bold; 
-                                text-shadow: 1px 1px 2px black; white-space:nowrap; text-align:center;">
-                        {row['Bearing']} <br> {row['Distance']}m
-                    </div>""")).add_to(m)
+            folium.Marker([m_lat, m_lon], icon=folium.DivIcon(html=f"""<div style="transform: rotate({row['Rotation']}deg) translateY(-12px); font-size:{dim_size}pt; color:#38bdf8; font-weight:bold; text-shadow: 1px 1px 2px black; white-space:nowrap; text-align:center;">{row['Bearing']} <br> {row['Distance']}m</div>""")).add_to(m)
 
     st.subheader("🛰️ Interactive Survey Visualization")
     folium_static(m, width=1200, height=750)
@@ -172,6 +153,5 @@ if uploaded_file:
     c1, c2 = st.columns(2)
     c1.metric("LOT AREA", f"{area_val:.3f} m²")
     c2.dataframe(df[['STN', 'Distance', 'Bearing']], hide_index=True, use_container_width=True)
-
 else:
     st.info("System Ready. Please upload 'point.csv' to reveal controls and map.")
