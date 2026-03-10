@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium.plugins import MiniMap, MeasureControl, FloatImage
+from folium.plugins import MiniMap, MeasureControl
 from streamlit_folium import folium_static
 import numpy as np
 import os
@@ -18,7 +18,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Strictly Professional) ---
+# --- 3. ADVANCED UI CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -32,12 +32,25 @@ st.markdown("""
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
+    
+    /* Login Box Styling */
+    .login-card {
+        background: rgba(255, 255, 255, 0.07);
+        backdrop-filter: blur(20px);
+        padding: 50px;
+        border-radius: 30px;
+        border: 2px solid rgba(56, 189, 248, 0.3);
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        margin-top: 50px;
+    }
+    
     .hero-container {
         display: flex; align-items: center; padding: 30px;
         background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(12px);
         border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1);
-        margin-bottom: 25px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        margin-bottom: 25px;
     }
     .middle-system-title {
         color: #FFFFFF !important; font-size: 50px; font-weight: 900;
@@ -48,47 +61,47 @@ st.markdown("""
         color: #38bdf8 !important; font-size: 22px; font-weight: 600; 
         background: rgba(56, 189, 248, 0.1); padding: 5px 15px; border-radius: 10px;
     }
-    /* Horizontal Label Styling */
     .leaflet-tooltip {
         background-color: white !important;
         color: black !important;
         font-weight: bold !important;
         border: 1px solid black !important;
-        box-shadow: 2px 2px 6px rgba(0,0,0,0.5) !important;
         transform: rotate(0deg) !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. LOGIN GATE ---
+# --- 4. ASSETS (Logo) ---
+logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/600px-Logo_PUO.png"
+
+# --- 5. ENHANCED LOGIN GATE ---
 if not st.session_state.logged_in:
-    cols = st.columns([1, 1.5, 1])
-    with cols[1]:
-        st.markdown('<div style="background: rgba(30, 41, 59, 0.9); padding: 40px; border-radius: 20px; border: 2px solid #38bdf8; text-align: center; margin-top: 100px;">', unsafe_allow_html=True)
-        st.title("🔐 ACCESS PORTAL")
-        password = st.text_input("Enter Password", type="password")
-        if st.button("Login", use_container_width=True):
-            if password == "12345678":
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        # Big Wide Logo
+        st.image(logo_url, width=450)
+        st.markdown("<h1 style='color:#38bdf8; font-size:45px; margin-bottom:10px;'>CORE GEOMATIK SYSTEM</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#94a3b8; font-size:18px;'>Authorized Access Only</p>", unsafe_allow_html=True)
+        
+        user_input = st.text_input("Username", placeholder="Enter Username")
+        pass_input = st.text_input("Security Key", type="password", placeholder="Enter Password")
+        
+        if st.button("🚀 INITIATE SYSTEM", use_container_width=True):
+            if user_input == "Admin" and pass_input == "12345678":
                 st.session_state.logged_in = True
+                st.success("Access Granted. Loading Survey Modules...")
                 st.rerun()
             else:
-                st.error("Invalid Key")
+                st.error("Authentication Failed: Invalid Credentials")
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- 5. LOGO & HEADER ---
-logo_file = "logo_puo.png"
-if os.path.exists(logo_file):
-    with open(logo_file, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode()
-        logo_html = f'<img src="data:image/png;base64,{encoded}" width="90">'
-else:
-    logo_html = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png" width="90">'
-
+# --- 6. MAIN HEADER ---
 st.markdown(f"""
     <div class="hero-container">
         <div style="display: flex; align-items: center; flex: 1.5;">
-            {logo_html}
+            <img src="{logo_url}" width="100">
             <div style="color:white; font-size:24px; font-weight:800; margin-left:15px; text-transform:uppercase; line-height:1.1;">POLITEKNIK<br>UNGKU OMAR</div>
         </div>
         <div style="flex: 2; text-align: center;">
@@ -101,7 +114,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. DMS MATH ---
+# --- 7. DMS MATH ---
 def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
@@ -116,7 +129,7 @@ def get_survey_math_dms(df):
         bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
 
-# --- 7. MAIN LOGIC ---
+# --- 8. DASHBOARD LOGIC ---
 uploaded_file = st.file_uploader("📂 Import Survey Dataset (point.csv)", type="csv")
 
 if uploaded_file:
@@ -125,28 +138,23 @@ if uploaded_file:
     df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
     df['Distance'], df['Bearing'] = get_survey_math_dms(df)
 
-    # GeoJSON Logic
+    # GeoJSON Setup
     coords = [[row['lon'], row['lat']] for _, row in df.iterrows()]
     coords.append(coords[0])
     geojson_dict = {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [coords]}}]}
 
     with st.sidebar:
-        st.markdown("### 🛠️ Professional Settings")
+        st.markdown("### 📊 Control Center")
         map_type = st.radio("Basemap Layer", ["Satellite Hybrid", "Satellite", "Street Map"])
         label_mode = st.toggle("Show Labels", value=True)
-        precision = st.slider("Coordinate Precision", 0, 5, 3)
-        st.divider()
-        stn_size = st.slider("Station Font", 6, 25, 10)
-        dim_size = st.slider("DMS Font", 6, 20, 8)
-        marker_rad = st.slider("Marker Size", 2, 15, 5)
         st.divider()
         st.markdown("### 🔍 Point Lookup")
         selected_stn = st.selectbox("Select Station ID", df['STN'].unique())
         stn_info = df[df['STN'] == selected_stn].iloc[0]
-        st.info(f"STN {selected_stn}\n\nE: {stn_info['E']:.{precision}f}\n\nN: {stn_info['N']:.{precision}f}")
+        st.info(f"STN {selected_stn}\n\nE: {stn_info['E']:.3f}\n\nN: {stn_info['N']:.3f}")
         st.divider()
         st.download_button("🌍 Download GeoJSON", data=json.dumps(geojson_dict), file_name="puo_survey.geojson", use_container_width=True)
-        if st.button("🚪 Logout"):
+        if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
@@ -158,42 +166,38 @@ if uploaded_file:
 
     if st.session_state.area_calculated:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-        st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:15px; border-radius:15px; border:1px solid #38bdf8; text-align:center;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:20px; border-radius:15px; border:1px solid #38bdf8; text-align:center;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # --- ENHANCED MAP ---
+    # --- MAP ---
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None)
-
-    # Map Layers
+    
     if map_type == "Satellite Hybrid":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', max_zoom=22, name="Hybrid").add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     elif map_type == "Satellite":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', max_zoom=22, name="Satellite").add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     else:
-        folium.TileLayer('OpenStreetMap', name="Street Map").add_to(m)
+        folium.TileLayer('OpenStreetMap').add_to(m)
 
-    # Add Scale Bar & MiniMap
-    folium.plugins.MiniMap(toggle_display=True).add_to(m)
-    folium.plugins.MeasureControl(position='topleft', primary_length_unit='meters').add_to(m)
-
-    # WHITE POLYGON
+    folium.plugins.MiniMap().add_to(m)
+    folium.plugins.MeasureControl(position='topleft').add_to(m)
+    
+    # White Polygon
     folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
-        folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
+        folium.CircleMarker(location=[row['lat'], row['lon']], radius=5, color="red", fill=True).add_to(m)
         if label_mode:
-            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:10pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html='<div style="width:1px; height:1px;"></div>')).add_child(folium.Tooltip(
                 f"{row['Bearing']}<br>{row['Distance']}m", permanent=True, direction='center',
-                style=f"font-size: {dim_size}pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;"
+                style="font-size: 8pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;"
             )).add_to(m)
 
-    # Fit map to bounds
     m.fit_bounds([[df['lat'].min(), df['lon'].min()], [df['lat'].max(), df['lon'].max()]])
     folium_static(m, width=1300, height=650)
     st.dataframe(df[['STN', 'E', 'N', 'Distance', 'Bearing']], use_container_width=True)
-
 else:
     st.info("System Ready. Please upload your survey points.")
