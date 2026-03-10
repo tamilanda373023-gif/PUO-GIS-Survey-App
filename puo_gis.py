@@ -16,7 +16,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Great Look & Horizontal Labels) ---
+# --- 3. UI CSS (Strictly Horizontal Labels) ---
 st.markdown("""
     <style>
     .stApp {
@@ -46,23 +46,19 @@ st.markdown("""
         color: #38bdf8 !important; font-size: 22px; font-weight: 600; 
         background: rgba(56, 189, 248, 0.1); padding: 5px 15px; border-radius: 10px;
     }
-    .metric-card {
-        background: rgba(255, 255, 255, 0.03);
-        padding: 15px; border-radius: 12px;
-        border-left: 4px solid #38bdf8;
-    }
-    /* Horizontal Label with White Background */
-    .horizontal-label {
-        background-color: white;
-        color: black;
-        font-weight: bold;
-        padding: 2px 6px;
-        border-radius: 4px;
-        border: 1px solid #1e293b;
-        text-align: center;
-        white-space: nowrap;
-        display: inline-block;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+    /* Horizontal Label Styling */
+    .horizontal-badge {
+        background-color: white !important;
+        color: black !important;
+        font-weight: 900 !important;
+        padding: 4px 8px !important;
+        border-radius: 5px !important;
+        border: 2px solid #1e293b !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        display: block !important;
+        box-shadow: 3px 3px 10px rgba(0,0,0,0.6) !important;
+        transform: rotate(0deg) !important; /* Forces horizontal */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -108,7 +104,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. DMS MATH ---
+# --- 6. DMS MATH (Bearings) ---
 def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
@@ -135,7 +131,7 @@ if uploaded_file:
     with st.sidebar:
         st.markdown("### 📊 Dashboard Control")
         map_type = st.radio("Map Style", ["Satellite Hybrid", "Satellite", "Street Map"])
-        label_mode = st.toggle("Show Labels", value=True) # Changed from Overlay Annotations
+        label_mode = st.toggle("Show Labels", value=True)
         st.divider()
         stn_size = st.slider("Station Font", 6, 25, 10)
         dim_size = st.slider("DMS Font", 6, 20, 8)
@@ -146,8 +142,8 @@ if uploaded_file:
             st.rerun()
 
     m1, m2, m3 = st.columns(3)
-    with m1: st.markdown(f'<div class="metric-card"><b>Total Stations</b><br><span style="font-size:24px; color:#38bdf8;">{len(df)}</span></div>', unsafe_allow_html=True)
-    with m2: st.markdown(f'<div class="metric-card"><b>Perimeter</b><br><span style="font-size:24px; color:#38bdf8;">{sum(df["Distance"]):.2f} m</span></div>', unsafe_allow_html=True)
+    with m1: st.metric("Total Stations", len(df))
+    with m2: st.metric("Perimeter", f"{sum(df['Distance']):.2f} m")
     with m3:
         if st.button("📐 CALCULATE AREA", use_container_width=True):
             st.session_state.area_calculated = True
@@ -156,6 +152,7 @@ if uploaded_file:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
         st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:20px; border-radius:15px; border:1px solid #38bdf8; text-align:center; margin-top:20px;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
+    # --- MAP (Zoom and Interactivity Enabled) ---
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None, scrollWheelZoom=True)
 
     if map_type == "Satellite Hybrid":
@@ -171,12 +168,14 @@ if uploaded_file:
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
         if label_mode:
-            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
+            # Station Number
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black; width:100px;">{int(row["STN"])}</div>')).add_to(m)
             
+            # Horizontal Label with White Background
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f"""
-                <div class="horizontal-label" style="font-size:{dim_size}pt;">
+                <div class="horizontal-badge" style="font-size:{dim_size}pt;">
                     {row['Bearing']}<br>{row['Distance']}m
                 </div>""")).add_to(m)
 
