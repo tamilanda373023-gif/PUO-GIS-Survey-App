@@ -5,6 +5,7 @@ from streamlit_folium import folium_static
 import numpy as np
 import os
 import base64
+import json
 from pyproj import Transformer
 
 # --- 1. SESSION STATE ---
@@ -16,7 +17,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Strictly Horizontal Labels) ---
+# --- 3. UI CSS (Great Look maintained) ---
 st.markdown("""
     <style>
     .stApp {
@@ -46,19 +47,15 @@ st.markdown("""
         color: #38bdf8 !important; font-size: 22px; font-weight: 600; 
         background: rgba(56, 189, 248, 0.1); padding: 5px 15px; border-radius: 10px;
     }
-    /* Horizontal Label Styling */
-    .horizontal-badge {
+    /* Fixed Horizontal Tooltip Style */
+    .leaflet-tooltip {
         background-color: white !important;
         color: black !important;
-        font-weight: 900 !important;
-        padding: 4px 8px !important;
-        border-radius: 5px !important;
-        border: 2px solid #1e293b !important;
+        font-weight: bold !important;
+        border: 1px solid #333 !important;
+        box-shadow: 2px 2px 6px rgba(0,0,0,0.3) !important;
+        transform: rotate(0deg) !important;
         text-align: center !important;
-        white-space: nowrap !important;
-        display: block !important;
-        box-shadow: 3px 3px 10px rgba(0,0,0,0.6) !important;
-        transform: rotate(0deg) !important; /* Forces horizontal */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -104,7 +101,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. DMS MATH (Bearings) ---
+# --- 6. DMS MATH ---
 def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
@@ -128,6 +125,18 @@ if uploaded_file:
     df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
     df['Distance'], df['Bearing'] = get_survey_math_dms(df)
 
+    # --- GEOJSON GENERATOR ---
+    coords = [[row['lon'], row['lat']] for _, row in df.iterrows()]
+    coords.append(coords[0]) # Close polygon
+    geojson_data = {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {"surveyor": "Tamilkumaran", "institution": "PUO"},
+            "geometry": {"type": "Polygon", "coordinates": [coords]}
+        }]
+    }
+
     with st.sidebar:
         st.markdown("### 📊 Dashboard Control")
         map_type = st.radio("Map Style", ["Satellite Hybrid", "Satellite", "Street Map"])
@@ -137,14 +146,22 @@ if uploaded_file:
         dim_size = st.slider("DMS Font", 6, 20, 8)
         marker_rad = st.slider("Point Radius", 2, 15, 5)
         st.divider()
+        # DOWNLOAD BUTTON
+        st.download_button(
+            label="🌍 Download GeoJSON",
+            data=json.dumps(geojson_data),
+            file_name="puo_survey_lot.geojson",
+            mime="application/json",
+            use_container_width=True
+        )
+        st.divider()
         if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    m1, m2, m3 = st.columns(3)
+    m1, m2 = st.columns(2)
     with m1: st.metric("Total Stations", len(df))
-    with m2: st.metric("Perimeter", f"{sum(df['Distance']):.2f} m")
-    with m3:
+    with m2: 
         if st.button("📐 CALCULATE AREA", use_container_width=True):
             st.session_state.area_calculated = True
 
@@ -152,7 +169,7 @@ if uploaded_file:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
         st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:20px; border-radius:15px; border:1px solid #38bdf8; text-align:center; margin-top:20px;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # --- MAP (Zoom and Interactivity Enabled) ---
+    # --- MAP ---
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None, scrollWheelZoom=True)
 
     if map_type == "Satellite Hybrid":
@@ -169,15 +186,22 @@ if uploaded_file:
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
         if label_mode:
             # Station Number
-            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black; width:100px;">{int(row["STN"])}</div>')).add_to(m)
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
-            # Horizontal Label with White Background
+            # Horizontal Tooltip for Bearing/Distance
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
-            folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f"""
-                <div class="horizontal-badge" style="font-size:{dim_size}pt;">
-                    {row['Bearing']}<br>{row['Distance']}m
-                </div>""")).add_to(m)
+            
+            # Using Tooltip with fixed rotation 0 to force horizontal view
+            folium.Marker(
+                [mid_lat, mid_lon], 
+                icon=folium.DivIcon(html=f'<div style="width:1px; height:1px;"></div>')
+            ).add_child(folium.Tooltip(
+                f"{row['Bearing']}<br>{row['Distance']}m", 
+                permanent=True, 
+                direction='center', 
+                style=f"font-size: {dim_size}pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;"
+            )).add_to(m)
 
     folium_static(m, width=1300, height=650)
     st.dataframe(df[['STN', 'Distance', 'Bearing']], use_container_width=True)
