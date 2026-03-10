@@ -16,7 +16,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. ADVANCED UI CSS ---
+# --- 3. UI CSS (Great Look & Horizontal Labels) ---
 st.markdown("""
     <style>
     .stApp {
@@ -46,34 +46,28 @@ st.markdown("""
         color: #38bdf8 !important; font-size: 22px; font-weight: 600; 
         background: rgba(56, 189, 248, 0.1); padding: 5px 15px; border-radius: 10px;
     }
-    .calc-box {
-        background: rgba(56, 189, 248, 0.15); padding: 20px;
-        border-radius: 15px; border: 1px solid #38bdf8; text-align: center;
-        margin-top: 20px;
-    }
     .metric-card {
         background: rgba(255, 255, 255, 0.03);
         padding: 15px; border-radius: 12px;
         border-left: 4px solid #38bdf8;
     }
-    /* Fitted Label Style */
-    .survey-label {
-        background: white;
-        color: #1e293b;
-        font-weight: 800;
-        padding: 4px 10px;
-        border-radius: 20px; /* Pill shape */
-        border: 1.5px solid #38bdf8;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.4);
+    /* Horizontal Label with White Background */
+    .horizontal-label {
+        background-color: white;
+        color: black;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid #1e293b;
         text-align: center;
         white-space: nowrap;
         display: inline-block;
-        line-height: 1.2;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. LOGIN GATE ---
+# --- 4. LOGIN GATE (12345678) ---
 if not st.session_state.logged_in:
     cols = st.columns([1, 1.5, 1])
     with cols[1]:
@@ -89,7 +83,7 @@ if not st.session_state.logged_in:
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- 5. LOGO & HEADER ---
+# --- 5. LOGO HANDLING ---
 logo_file = "logo_puo.png"
 if os.path.exists(logo_file):
     with open(logo_file, "rb") as f:
@@ -123,10 +117,8 @@ def get_survey_math_dms(df):
         p2 = (df.iloc[next_idx]['E'], df.iloc[next_idx]['N'])
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
         angle_deg = np.degrees(np.arctan2(p2[0]-p1[0], p2[1]-p1[1])) % 360
-        deg = int(angle_deg)
-        min_part = (angle_deg - deg) * 60
-        minutes = int(min_part)
-        seconds = int((min_part - minutes) * 60)
+        deg, min_part = int(angle_deg), (angle_deg - int(angle_deg)) * 60
+        minutes, seconds = int(min_part), int((min_part - int(min_part)) * 60)
         distances.append(round(dist, 3))
         bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
@@ -143,17 +135,11 @@ if uploaded_file:
     with st.sidebar:
         st.markdown("### 📊 Dashboard Control")
         map_type = st.radio("Map Style", ["Satellite Hybrid", "Satellite", "Street Map"])
-        label_mode = st.toggle("Overlay Annotations", value=True)
+        label_mode = st.toggle("Show Labels", value=True) # Changed from Overlay Annotations
         st.divider()
         stn_size = st.slider("Station Font", 6, 25, 10)
         dim_size = st.slider("DMS Font", 6, 20, 8)
         marker_rad = st.slider("Point Radius", 2, 15, 5)
-        st.divider()
-        # --- NEW ELEMENT: COORDINATE LOOKUP ---
-        st.markdown("### 🔍 Point Lookup")
-        look_stn = st.selectbox("Select Station ID", df['STN'].unique())
-        point_data = df[df['STN'] == look_stn].iloc[0]
-        st.info(f"E: {point_data['E']}\nN: {point_data['N']}")
         st.divider()
         if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
@@ -161,27 +147,26 @@ if uploaded_file:
 
     m1, m2, m3 = st.columns(3)
     with m1: st.markdown(f'<div class="metric-card"><b>Total Stations</b><br><span style="font-size:24px; color:#38bdf8;">{len(df)}</span></div>', unsafe_allow_html=True)
-    with m2: 
-        perimeter = sum(df['Distance'])
-        st.markdown(f'<div class="metric-card"><b>Perimeter</b><br><span style="font-size:24px; color:#38bdf8;">{perimeter:.2f} m</span></div>', unsafe_allow_html=True)
+    with m2: st.markdown(f'<div class="metric-card"><b>Perimeter</b><br><span style="font-size:24px; color:#38bdf8;">{sum(df["Distance"]):.2f} m</span></div>', unsafe_allow_html=True)
     with m3:
         if st.button("📐 CALCULATE AREA", use_container_width=True):
             st.session_state.area_calculated = True
 
     if st.session_state.area_calculated:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-        st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:20px; border-radius:15px; border:1px solid #38bdf8; text-align:center; margin-top:20px;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None, scrollWheelZoom=True)
 
-    if map_type == "Satellite":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
-    elif map_type == "Satellite Hybrid":
+    if map_type == "Satellite Hybrid":
         folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
+    elif map_type == "Satellite":
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     else:
         folium.TileLayer('OpenStreetMap').add_to(m)
 
-    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=3, fill=True, fill_opacity=0.1).add_to(m)
+    # WHITE POLYGON LOT
+    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
@@ -191,7 +176,7 @@ if uploaded_file:
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f"""
-                <div class="survey-label" style="font-size:{dim_size}pt;">
+                <div class="horizontal-label" style="font-size:{dim_size}pt;">
                     {row['Bearing']}<br>{row['Distance']}m
                 </div>""")).add_to(m)
 
