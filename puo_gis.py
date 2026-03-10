@@ -3,6 +3,7 @@ import pandas as pd
 import folium
 from streamlit_folium import folium_static
 import numpy as np
+import os
 from pyproj import Transformer
 
 # --- 1. SESSION STATE ---
@@ -14,7 +15,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. ADVANCED STYLING ---
+# --- 3. CSS (Glowing Header & Great Look) ---
 st.markdown("""
     <style>
     .stApp {
@@ -72,7 +73,37 @@ if not st.session_state.logged_in:
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- 5. DATA FUNCTIONS ---
+# --- 5. HEADER (LOGO FIX & NAME) ---
+logo_file = "logo_puo.png"
+logo_html = ""
+
+# Checking if the file exists in your directory
+if os.path.exists(logo_file):
+    import base64
+    with open(logo_file, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+        logo_html = f'<img src="data:image/png;base64,{encoded}" width="90">'
+else:
+    # Fallback to web link if file is not found
+    logo_html = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png" width="90">'
+
+st.markdown(f"""
+    <div class="hero-container">
+        <div style="display: flex; align-items: center; flex: 1.5;">
+            {logo_html}
+            <div class="poli-name-text">POLITEKNIK<br>UNGKU OMAR</div>
+        </div>
+        <div style="flex: 2; text-align: center;">
+            <p class="middle-system-title">SISTEM SURVEY LOT PUO</p>
+            <p style="margin-top: 10px;"><span class="surveyor-name">Lead Surveyor: Tamilkumaran</span></p>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <p style="color: #94a3b8; font-size: 14px;">UNIT GEOMATIK<br>JABATAN KEJURUTERAAN AWAM</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# --- 6. DATA FUNCTIONS ---
 def get_survey_math(df):
     distances, bearings, angles = [], [], []
     for i in range(len(df)):
@@ -90,64 +121,38 @@ def get_survey_math(df):
         angles.append(rotation)
     return distances, bearings, angles
 
-def transform_coords_johor(e, n):
-    transformer = Transformer.from_crs("epsg:4390", "epsg:4326", always_xy=True)
-    lon, lat = transformer.transform(e, n)
-    return lat, lon
-
-# --- 6. HEADER WITH LOGO AND NAME ---
-# Link to your GitHub logo (Replace with your actual raw link if needed)
-github_logo = "https://raw.githubusercontent.com/TamilkumaranPUO/YOUR_REPO/main/logo_puo.png"
-wiki_logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png"
-
-st.markdown(f"""
-    <div class="hero-container">
-        <div style="display: flex; align-items: center; flex: 1.5;">
-            <img src="{github_logo}" width="90" onerror="this.src='{wiki_logo}'">
-            <div class="poli-name-text">POLITEKNIK<br>UNGKU OMAR</div>
-        </div>
-        <div style="flex: 2; text-align: center;">
-            <p class="middle-system-title">SISTEM SURVEY LOT PUO</p>
-            <p style="margin-top: 10px;"><span class="surveyor-name">Lead Surveyor: Tamilkumaran</span></p>
-        </div>
-        <div style="flex: 1; text-align: right;">
-            <p style="color: #94a3b8; font-size: 14px;">UNIT GEOMATIK<br>JABATAN KEJURUTERAAN AWAM</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
 # --- 7. MAIN APP ---
-uploaded_file = st.file_uploader("📂 Upload point.csv to begin", type="csv")
+uploaded_file = st.file_uploader("📂 Upload point.csv", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    df['lat'], df['lon'] = transform_coords_johor(df['E'].values, df['N'].values)
+    transformer = Transformer.from_crs("epsg:4390", "epsg:4326", always_xy=True)
+    df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
     dist, bear, rot = get_survey_math(df)
     df['Distance'], df['Bearing'], df['Rotation'] = dist, bear, rot
-    
+
+    # --- SIDEBAR (RESTORED FONT ADJUSTMENTS) ---
     with st.sidebar:
-        st.title("Map Controls")
-        sat_mode = st.toggle("Satellite View", value=True)
-        label_mode = st.toggle("Show Dimensions", value=True)
-        st.divider()
+        st.header("🕹️ DISPLAY CONTROLLER")
+        sat_mode = st.toggle("🛰️ Google Satellite", value=True)
+        label_mode = st.toggle("📍 Show Labels", value=True)
+        st.markdown("---")
+        # THESE ARE THE ADJUSTMENT INDICATIONS YOU WANTED:
+        stn_size = st.slider("Station ID Size", 8, 30, 15)
+        dim_size = st.slider("Bearing/Distance Size", 6, 20, 11)
+        marker_rad = st.slider("Marker Point Size", 2, 20, 8)
+        st.markdown("---")
         if st.button("🚪 Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- CALCULATION SECTION ---
-    st.markdown("### 📐 Area Analysis")
+    # --- CALCULATION BUTTON ---
     if st.button("🚀 CALCULATE LOT AREA", use_container_width=True):
         st.session_state.area_calculated = True
 
     if st.session_state.area_calculated:
-        area_m2 = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-        area_ha = area_m2 / 10000
-        st.markdown(f"""
-            <div class="calc-box">
-                <h2 style="margin:0; color:#38bdf8;">RESULT: {area_m2:.3f} m²</h2>
-                <p style="margin:0; font-size:18px;">({area_ha:.4f} Hectares)</p>
-            </div>
-        """, unsafe_allow_html=True)
+        area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
+        st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8;">LOT AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
     # --- MAP ---
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None)
@@ -156,18 +161,18 @@ if uploaded_file:
     else:
         folium.TileLayer('cartodbpositron').add_to(m)
 
-    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=5, fill=True, fill_opacity=0.2).add_to(m)
+    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=4, fill=True, fill_opacity=0.15).add_to(m)
 
     for i, row in df.iterrows():
-        folium.CircleMarker(location=[row['lat'], row['lon']], radius=6, color="red", fill=True).add_to(m)
+        folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
         if label_mode:
-            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:12pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')).add_to(m)
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             next_p = df.iloc[(i + 1) % len(df)]
             m_lat, m_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
-            folium.Marker([m_lat, m_lon], icon=folium.DivIcon(html=f"""<div style="transform: rotate({row['Rotation']}deg) translateY(-12px); font-size:10pt; color:#38bdf8; font-weight:bold; text-shadow: 1px 1px 2px black; white-space:nowrap; text-align:center;">{row['Bearing']} <br> {row['Distance']}m</div>""")).add_to(m)
+            folium.Marker([m_lat, m_lon], icon=folium.DivIcon(html=f"""<div style="transform: rotate({row['Rotation']}deg) translateY(-12px); font-size:{dim_size}pt; color:#38bdf8; font-weight:bold; text-shadow: 1px 1px 2px black; white-space:nowrap; text-align:center;">{row['Bearing']} <br> {row['Distance']}m</div>""")).add_to(m)
 
     folium_static(m, width=1300, height=650)
     st.dataframe(df[['STN', 'Distance', 'Bearing']], use_container_width=True)
 
 else:
-    st.info("System Ready. Please upload your survey data file.")
+    st.info("System Ready. Please upload your 'point.csv' file.")
