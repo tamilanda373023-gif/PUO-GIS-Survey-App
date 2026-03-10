@@ -18,7 +18,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. ADVANCED UI CSS ---
+# --- 3. UI CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -32,8 +32,6 @@ st.markdown("""
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-    
-    /* Login Box Styling */
     .login-card {
         background: rgba(255, 255, 255, 0.07);
         backdrop-filter: blur(20px);
@@ -44,7 +42,6 @@ st.markdown("""
         box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         margin-top: 50px;
     }
-    
     .hero-container {
         display: flex; align-items: center; padding: 30px;
         background: rgba(255, 255, 255, 0.05);
@@ -71,29 +68,33 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. ASSETS (Logo) ---
-logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/600px-Logo_PUO.png"
+# --- 4. LOGO LOGIC (RESTORING PREVIOUS METHOD) ---
+logo_file = "logo_puo.png"
+if os.path.exists(logo_file):
+    with open(logo_file, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+        logo_html = f'data:image/png;base64,{encoded}'
+else:
+    # Backup URL if file is missing
+    logo_html = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/600px-Logo_PUO.png"
 
-# --- 5. ENHANCED LOGIN GATE ---
+# --- 5. LOGIN GATE ---
 if not st.session_state.logged_in:
     _, center, _ = st.columns([1, 2, 1])
     with center:
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        # Big Wide Logo
-        st.image(logo_url, width=450)
+        st.image(logo_html, width=450)
         st.markdown("<h1 style='color:#38bdf8; font-size:45px; margin-bottom:10px;'>CORE GEOMATIK SYSTEM</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='color:#94a3b8; font-size:18px;'>Authorized Access Only</p>", unsafe_allow_html=True)
         
-        user_input = st.text_input("Username", placeholder="Enter Username")
-        pass_input = st.text_input("Security Key", type="password", placeholder="Enter Password")
+        user_input = st.text_input("Username", placeholder="Admin")
+        pass_input = st.text_input("Security Key", type="password", placeholder="12345678")
         
         if st.button("🚀 INITIATE SYSTEM", use_container_width=True):
             if user_input == "Admin" and pass_input == "12345678":
                 st.session_state.logged_in = True
-                st.success("Access Granted. Loading Survey Modules...")
                 st.rerun()
             else:
-                st.error("Authentication Failed: Invalid Credentials")
+                st.error("Authentication Failed")
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
@@ -101,7 +102,7 @@ if not st.session_state.logged_in:
 st.markdown(f"""
     <div class="hero-container">
         <div style="display: flex; align-items: center; flex: 1.5;">
-            <img src="{logo_url}" width="100">
+            <img src="{logo_html}" width="100">
             <div style="color:white; font-size:24px; font-weight:800; margin-left:15px; text-transform:uppercase; line-height:1.1;">POLITEKNIK<br>UNGKU OMAR</div>
         </div>
         <div style="flex: 2; text-align: center;">
@@ -114,7 +115,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 7. DMS MATH ---
+# --- 7. MATH & LOGIC ---
 def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
@@ -129,7 +130,6 @@ def get_survey_math_dms(df):
         bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
 
-# --- 8. DASHBOARD LOGIC ---
 uploaded_file = st.file_uploader("📂 Import Survey Dataset (point.csv)", type="csv")
 
 if uploaded_file:
@@ -137,8 +137,6 @@ if uploaded_file:
     transformer = Transformer.from_crs("epsg:4390", "epsg:4326", always_xy=True)
     df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
     df['Distance'], df['Bearing'] = get_survey_math_dms(df)
-
-    # GeoJSON Setup
     coords = [[row['lon'], row['lat']] for _, row in df.iterrows()]
     coords.append(coords[0])
     geojson_dict = {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [coords]}}]}
@@ -154,7 +152,7 @@ if uploaded_file:
         st.info(f"STN {selected_stn}\n\nE: {stn_info['E']:.3f}\n\nN: {stn_info['N']:.3f}")
         st.divider()
         st.download_button("🌍 Download GeoJSON", data=json.dumps(geojson_dict), file_name="puo_survey.geojson", use_container_width=True)
-        if st.button("🚪 System Logout"):
+        if st.button("🚪 Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
@@ -168,7 +166,6 @@ if uploaded_file:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
         st.markdown(f'<div style="background:rgba(56,189,248,0.15); padding:20px; border-radius:15px; border:1px solid #38bdf8; text-align:center;"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # --- MAP ---
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None)
     
     if map_type == "Satellite Hybrid":
@@ -180,15 +177,12 @@ if uploaded_file:
 
     folium.plugins.MiniMap().add_to(m)
     folium.plugins.MeasureControl(position='topleft').add_to(m)
-    
-    # White Polygon
     folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=5, color="red", fill=True).add_to(m)
         if label_mode:
             folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:10pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
-            
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html='<div style="width:1px; height:1px;"></div>')).add_child(folium.Tooltip(
