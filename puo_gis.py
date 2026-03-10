@@ -17,7 +17,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Great Look maintained) ---
+# --- 3. UI CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -47,7 +47,6 @@ st.markdown("""
         color: #38bdf8 !important; font-size: 22px; font-weight: 600; 
         background: rgba(56, 189, 248, 0.1); padding: 5px 15px; border-radius: 10px;
     }
-    /* Fixed Horizontal Tooltip Style */
     .leaflet-tooltip {
         background-color: white !important;
         color: black !important;
@@ -83,7 +82,7 @@ if os.path.exists(logo_file):
         encoded = base64.b64encode(f.read()).decode()
         logo_html = f'<img src="data:image/png;base64,{encoded}" width="90">'
 else:
-    logo_html = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png" width="90">'
+    logo_html = f'<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Logo_PUO.png/200px-Logo_PUO.png" width="90">'
 
 st.markdown(f"""
     <div class="hero-container">
@@ -125,16 +124,12 @@ if uploaded_file:
     df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
     df['Distance'], df['Bearing'] = get_survey_math_dms(df)
 
-    # --- GEOJSON GENERATOR ---
+    # GeoJSON Data
     coords = [[row['lon'], row['lat']] for _, row in df.iterrows()]
-    coords.append(coords[0]) # Close polygon
-    geojson_data = {
+    coords.append(coords[0])
+    geojson_dict = {
         "type": "FeatureCollection",
-        "features": [{
-            "type": "Feature",
-            "properties": {"surveyor": "Tamilkumaran", "institution": "PUO"},
-            "geometry": {"type": "Polygon", "coordinates": [coords]}
-        }]
+        "features": [{"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [coords]}}]
     }
 
     with st.sidebar:
@@ -146,15 +141,15 @@ if uploaded_file:
         dim_size = st.slider("DMS Font", 6, 20, 8)
         marker_rad = st.slider("Point Radius", 2, 15, 5)
         st.divider()
-        # DOWNLOAD BUTTON
-        st.download_button(
-            label="🌍 Download GeoJSON",
-            data=json.dumps(geojson_data),
-            file_name="puo_survey_lot.geojson",
-            mime="application/json",
-            use_container_width=True
-        )
+
+        # --- POINT LOOKUP TOOL ---
+        st.markdown("### 🔍 Point Lookup")
+        selected_stn = st.selectbox("Select Station ID", df['STN'].unique())
+        stn_info = df[df['STN'] == selected_stn].iloc[0]
+        st.success(f"STN {selected_stn}\n\nE: {stn_info['E']:.3f}\n\nN: {stn_info['N']:.3f}")
         st.divider()
+
+        st.download_button("🌍 Download GeoJSON", data=json.dumps(geojson_dict), file_name="puo_survey.geojson", use_container_width=True)
         if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
             st.rerun()
@@ -179,31 +174,23 @@ if uploaded_file:
     else:
         folium.TileLayer('OpenStreetMap').add_to(m)
 
-    # WHITE POLYGON LOT
     folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
         if label_mode:
-            # Station Number
             folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
-            # Horizontal Tooltip for Bearing/Distance
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             
-            # Using Tooltip with fixed rotation 0 to force horizontal view
-            folium.Marker(
-                [mid_lat, mid_lon], 
-                icon=folium.DivIcon(html=f'<div style="width:1px; height:1px;"></div>')
-            ).add_child(folium.Tooltip(
-                f"{row['Bearing']}<br>{row['Distance']}m", 
-                permanent=True, 
-                direction='center', 
+            # Forced horizontal tooltip
+            folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f'<div style="width:1px; height:1px;"></div>')).add_child(folium.Tooltip(
+                f"{row['Bearing']}<br>{row['Distance']}m", permanent=True, direction='center',
                 style=f"font-size: {dim_size}pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;"
             )).add_to(m)
 
     folium_static(m, width=1300, height=650)
-    st.dataframe(df[['STN', 'Distance', 'Bearing']], use_container_width=True)
+    st.dataframe(df[['STN', 'E', 'N', 'Distance', 'Bearing']], use_container_width=True)
 else:
     st.info("System Ready. Please upload your survey points.")
