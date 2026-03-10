@@ -48,16 +48,27 @@ st.markdown("""
     }
     .calc-box {
         background: rgba(56, 189, 248, 0.15); padding: 20px;
-        border-radius: 15px; border: 2px solid #38bdf8; text-align: center;
-        margin-top: 20px; animation: slideIn 0.5s ease-out;
+        border-radius: 15px; border: 1px solid #38bdf8; text-align: center;
+        margin-top: 20px;
     }
-    @keyframes slideIn { from {opacity:0; transform: translateY(10px);} to {opacity:1; transform: translateY(0);} }
-    
-    /* Interactive Metric Cards */
     .metric-card {
         background: rgba(255, 255, 255, 0.03);
         padding: 15px; border-radius: 12px;
         border-left: 4px solid #38bdf8;
+    }
+    /* Fitted Label Style */
+    .survey-label {
+        background: white;
+        color: #1e293b;
+        font-weight: 800;
+        padding: 4px 10px;
+        border-radius: 20px; /* Pill shape */
+        border: 1.5px solid #38bdf8;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.4);
+        text-align: center;
+        white-space: nowrap;
+        display: inline-block;
+        line-height: 1.2;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -103,7 +114,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. DMS MATH (D° M' S") ---
+# --- 6. DMS MATH ---
 def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
@@ -111,14 +122,11 @@ def get_survey_math_dms(df):
         next_idx = (i + 1) % len(df)
         p2 = (df.iloc[next_idx]['E'], df.iloc[next_idx]['N'])
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
-        
-        # Bearing Calculation
         angle_deg = np.degrees(np.arctan2(p2[0]-p1[0], p2[1]-p1[1])) % 360
         deg = int(angle_deg)
         min_part = (angle_deg - deg) * 60
         minutes = int(min_part)
         seconds = int((min_part - minutes) * 60)
-        
         distances.append(round(dist, 3))
         bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
@@ -134,18 +142,23 @@ if uploaded_file:
 
     with st.sidebar:
         st.markdown("### 📊 Dashboard Control")
-        map_type = st.radio("Map Style", ["Satellite", "Satellite Hybrid", "Street Map"])
+        map_type = st.radio("Map Style", ["Satellite Hybrid", "Satellite", "Street Map"])
         label_mode = st.toggle("Overlay Annotations", value=True)
         st.divider()
         stn_size = st.slider("Station Font", 6, 25, 10)
         dim_size = st.slider("DMS Font", 6, 20, 8)
         marker_rad = st.slider("Point Radius", 2, 15, 5)
         st.divider()
+        # --- NEW ELEMENT: COORDINATE LOOKUP ---
+        st.markdown("### 🔍 Point Lookup")
+        look_stn = st.selectbox("Select Station ID", df['STN'].unique())
+        point_data = df[df['STN'] == look_stn].iloc[0]
+        st.info(f"E: {point_data['E']}\nN: {point_data['N']}")
+        st.divider()
         if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    # Quick Metrics
     m1, m2, m3 = st.columns(3)
     with m1: st.markdown(f'<div class="metric-card"><b>Total Stations</b><br><span style="font-size:24px; color:#38bdf8;">{len(df)}</span></div>', unsafe_allow_html=True)
     with m2: 
@@ -159,7 +172,6 @@ if uploaded_file:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
         st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # Map Implementation
     m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None, scrollWheelZoom=True)
 
     if map_type == "Satellite":
@@ -179,7 +191,7 @@ if uploaded_file:
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f"""
-                <div style="background:white; border:1px solid #1e293b; padding:2px 4px; border-radius:4px; font-size:{dim_size}pt; color:black; font-weight:bold; white-space:nowrap; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);">
+                <div class="survey-label" style="font-size:{dim_size}pt;">
                     {row['Bearing']}<br>{row['Distance']}m
                 </div>""")).add_to(m)
 
