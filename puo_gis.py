@@ -18,7 +18,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Precision UI) ---
+# --- 3. UI CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -32,7 +32,6 @@ st.markdown("""
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-    
     .login-card {
         background: rgba(255, 255, 255, 0.07);
         backdrop-filter: blur(20px);
@@ -45,7 +44,6 @@ st.markdown("""
         margin: 50px auto;
         display: block;
     }
-
     .login-card img {
         max-width: 100% !important;
         height: auto !important;
@@ -53,7 +51,6 @@ st.markdown("""
         margin-left: auto;
         margin-right: auto;
     }
-    
     .hero-container {
         display: flex; align-items: center; padding: 30px;
         background: rgba(255, 255, 255, 0.05);
@@ -100,10 +97,8 @@ if not st.session_state.logged_in:
                 <p style="color:#94a3b8; font-size:18px;">Authorized Admin Access Only</p>
             </div>
         ''', unsafe_allow_html=True)
-        
         user_input = st.text_input("Username", placeholder="Admin")
         pass_input = st.text_input("Security Key", type="password", placeholder="12345678")
-        
         if st.button("🚀 INITIATE SYSTEM", use_container_width=True):
             if user_input == "Admin" and pass_input == "12345678":
                 st.session_state.logged_in = True
@@ -140,8 +135,7 @@ def get_survey_math_dms(df):
         angle_deg = np.degrees(np.arctan2(p2[0]-p1[0], p2[1]-p1[1])) % 360
         deg, min_part = int(angle_deg), (angle_deg - int(angle_deg)) * 60
         minutes, seconds = int(min_part), int((min_part - int(min_part)) * 60)
-        distances.append(round(dist, 3))
-        bearings.append(f"{deg}° {minutes}' {seconds}\"")
+        distances.append(round(dist, 3)); bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
 
 uploaded_file = st.file_uploader("📂 Import Survey Dataset (point.csv)", type="csv")
@@ -157,7 +151,9 @@ if uploaded_file:
     with st.sidebar:
         st.markdown("### 📊 Control Center")
         map_type = st.radio("Basemap Layer", ["Satellite Hybrid", "Satellite", "Street Map"])
-        label_mode = st.toggle("Show Labels", value=True)
+        label_mode = st.toggle("Show Text Labels", value=True)
+        # NEW POLYGON TOGGLE
+        poly_mode = st.toggle("Show Lot Boundary", value=True)
         st.divider()
         st.markdown("### 🔍 Point Lookup")
         selected_stn = st.selectbox("Select Station ID", df['STN'].unique())
@@ -187,28 +183,17 @@ if uploaded_file:
     folium.plugins.MiniMap().add_to(m)
     folium.plugins.MeasureControl(position='topleft').add_to(m)
     
-    # White Polygon Boundary
-    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
+    # Polygon logic tied to the toggle
+    if poly_mode:
+        folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
-        # PROFESSIONAL HOVER: Displays E and N coordinates
         hover_text = f"STN: {int(row['STN'])} | E: {row['E']:.3f}, N: {row['N']:.3f}"
-        folium.CircleMarker(
-            location=[row['lat'], row['lon']], 
-            radius=6, 
-            color="red", 
-            fill=True,
-            tooltip=folium.Tooltip(hover_text, sticky=True)
-        ).add_to(m)
-
+        folium.CircleMarker(location=[row['lat'], row['lon']], radius=6, color="red", fill=True, tooltip=folium.Tooltip(hover_text, sticky=True)).add_to(m)
         if label_mode:
             folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:10pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
-            next_p = df.iloc[(i + 1) % len(df)]
-            mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
-            folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html='<div style="width:1px; height:1px;"></div>')).add_child(folium.Tooltip(
-                f"{row['Bearing']}<br>{row['Distance']}m", permanent=True, direction='center',
-                style="font-size: 8pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;"
-            )).add_to(m)
+            next_p = df.iloc[(i + 1) % len(df)]; mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
+            folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html='<div style="width:1px; height:1px;"></div>')).add_child(folium.Tooltip(f"{row['Bearing']}<br>{row['Distance']}m", permanent=True, direction='center', style="font-size: 8pt; background-color: white; color: black; border: 1px solid black; font-weight: bold; border-radius: 4px;")).add_to(m)
 
     m.fit_bounds([[df['lat'].min(), df['lon'].min()], [df['lat'].max(), df['lon'].max()]])
     folium_static(m, width=1300, height=650)
