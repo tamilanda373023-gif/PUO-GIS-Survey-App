@@ -16,7 +16,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. CSS (Great Look maintained) ---
+# --- 3. ADVANCED UI CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -37,10 +37,6 @@ st.markdown("""
         border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1);
         margin-bottom: 25px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
     }
-    .poli-name-text { 
-        color: #FFFFFF !important; font-size: 24px; font-weight: 800; 
-        margin-left: 15px; text-transform: uppercase; line-height: 1.1;
-    }
     .middle-system-title {
         color: #FFFFFF !important; font-size: 50px; font-weight: 900;
         text-transform: uppercase; margin: 0;
@@ -52,13 +48,21 @@ st.markdown("""
     }
     .calc-box {
         background: rgba(56, 189, 248, 0.15); padding: 20px;
-        border-radius: 15px; border: 1px solid #38bdf8; text-align: center;
-        margin-top: 20px;
+        border-radius: 15px; border: 2px solid #38bdf8; text-align: center;
+        margin-top: 20px; animation: slideIn 0.5s ease-out;
+    }
+    @keyframes slideIn { from {opacity:0; transform: translateY(10px);} to {opacity:1; transform: translateY(0);} }
+    
+    /* Interactive Metric Cards */
+    .metric-card {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 15px; border-radius: 12px;
+        border-left: 4px solid #38bdf8;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. LOGIN GATE (12345678) ---
+# --- 4. LOGIN GATE ---
 if not st.session_state.logged_in:
     cols = st.columns([1, 1.5, 1])
     with cols[1]:
@@ -74,7 +78,7 @@ if not st.session_state.logged_in:
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- 5. LOGO HANDLING ---
+# --- 5. LOGO & HEADER ---
 logo_file = "logo_puo.png"
 if os.path.exists(logo_file):
     with open(logo_file, "rb") as f:
@@ -87,7 +91,7 @@ st.markdown(f"""
     <div class="hero-container">
         <div style="display: flex; align-items: center; flex: 1.5;">
             {logo_html}
-            <div class="poli-name-text">POLITEKNIK<br>UNGKU OMAR</div>
+            <div style="color:white; font-size:24px; font-weight:800; margin-left:15px; text-transform:uppercase; line-height:1.1;">POLITEKNIK<br>UNGKU OMAR</div>
         </div>
         <div style="flex: 2; text-align: center;">
             <p class="middle-system-title">SISTEM SURVEY LOT PUO</p>
@@ -99,97 +103,87 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. CORE FUNCTIONS ---
-def get_survey_math(df):
+# --- 6. DMS MATH (D° M' S") ---
+def get_survey_math_dms(df):
     distances, bearings = [], []
     for i in range(len(df)):
         p1 = (df.iloc[i]['E'], df.iloc[i]['N'])
         next_idx = (i + 1) % len(df)
         p2 = (df.iloc[next_idx]['E'], df.iloc[next_idx]['N'])
         dist = np.sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
+        
+        # Bearing Calculation
         angle_deg = np.degrees(np.arctan2(p2[0]-p1[0], p2[1]-p1[1])) % 360
+        deg = int(angle_deg)
+        min_part = (angle_deg - deg) * 60
+        minutes = int(min_part)
+        seconds = int((min_part - minutes) * 60)
+        
         distances.append(round(dist, 3))
-        bearings.append(f"{int(angle_deg)}° {int((angle_deg%1)*60)}'")
+        bearings.append(f"{deg}° {minutes}' {seconds}\"")
     return distances, bearings
 
-# --- 7. FILE UPLOAD & LOGIC ---
-uploaded_file = st.file_uploader("📂 Upload point.csv", type="csv")
+# --- 7. MAIN LOGIC ---
+uploaded_file = st.file_uploader("📂 Import Survey Dataset (point.csv)", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     transformer = Transformer.from_crs("epsg:4390", "epsg:4326", always_xy=True)
     df['lon'], df['lat'] = transformer.transform(df['E'].values, df['N'].values)
-    df['Distance'], df['Bearing'] = get_survey_math(df)
+    df['Distance'], df['Bearing'] = get_survey_math_dms(df)
 
     with st.sidebar:
-        st.header("🕹️ DISPLAY CONTROLLER")
-        map_type = st.radio("🗺️ Map Layer", ["Satellite", "Satellite Hybrid", "Street Map"])
-        label_mode = st.toggle("📍 Show Labels", value=True)
-        st.markdown("---")
-        # Fixed initial values to be smaller
-        stn_size = st.slider("Station ID Size", 8, 30, 10)
-        dim_size = st.slider("Bearing/Distance Size", 6, 20, 8)
-        marker_rad = st.slider("Marker Point Size", 2, 20, 5)
-        st.markdown("---")
-        if st.button("🚪 Logout"):
+        st.markdown("### 📊 Dashboard Control")
+        map_type = st.radio("Map Style", ["Satellite", "Satellite Hybrid", "Street Map"])
+        label_mode = st.toggle("Overlay Annotations", value=True)
+        st.divider()
+        stn_size = st.slider("Station Font", 6, 25, 10)
+        dim_size = st.slider("DMS Font", 6, 20, 8)
+        marker_rad = st.slider("Point Radius", 2, 15, 5)
+        st.divider()
+        if st.button("🚪 System Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    if st.button("🚀 CALCULATE LOT AREA", use_container_width=True):
-        st.session_state.area_calculated = True
+    # Quick Metrics
+    m1, m2, m3 = st.columns(3)
+    with m1: st.markdown(f'<div class="metric-card"><b>Total Stations</b><br><span style="font-size:24px; color:#38bdf8;">{len(df)}</span></div>', unsafe_allow_html=True)
+    with m2: 
+        perimeter = sum(df['Distance'])
+        st.markdown(f'<div class="metric-card"><b>Perimeter</b><br><span style="font-size:24px; color:#38bdf8;">{perimeter:.2f} m</span></div>', unsafe_allow_html=True)
+    with m3:
+        if st.button("📐 CALCULATE AREA", use_container_width=True):
+            st.session_state.area_calculated = True
 
     if st.session_state.area_calculated:
         area_val = 0.5 * np.abs(np.dot(df['E'], np.roll(df['N'], 1)) - np.dot(df['N'], np.roll(df['E'], 1)))
-        st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8;">LOT AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="calc-box"><h2 style="color:#38bdf8; margin:0;">CALCULATED AREA: {area_val:.3f} m²</h2></div>', unsafe_allow_html=True)
 
-    # --- FOLIUM MAP (Zoom Enabled) ---
-    m = folium.Map(
-        location=[df['lat'].mean(), df['lon'].mean()], 
-        zoom_start=19, 
-        tiles=None,
-        scrollWheelZoom=True, # FIXED: Enable scroll zoom
-        dragging=True         # FIXED: Ensure map can be moved
-    )
+    # Map Implementation
+    m = folium.Map(location=[df['lat'].mean(), df['lon'].mean()], zoom_start=19, tiles=None, scrollWheelZoom=True)
 
-    # Map Layers
     if map_type == "Satellite":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite', max_zoom=22).add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     elif map_type == "Satellite Hybrid":
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Hybrid', max_zoom=22).add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', max_zoom=22).add_to(m)
     else:
-        folium.TileLayer('OpenStreetMap', name='Street Map').add_to(m)
+        folium.TileLayer('OpenStreetMap').add_to(m)
 
-    # Boundary
-    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=4, fill=True, fill_opacity=0.15).add_to(m)
+    folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="#FBFF00", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
         folium.CircleMarker(location=[row['lat'], row['lon']], radius=marker_rad, color="red", fill=True).add_to(m)
-        
         if label_mode:
-            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:2px 2px black; width:100px;">{int(row["STN"])}</div>')).add_to(m)
+            folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:{stn_size}pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             
             next_p = df.iloc[(i + 1) % len(df)]
             mid_lat, mid_lon = (row['lat'] + next_p['lat']) / 2, (row['lon'] + next_p['lon']) / 2
-            
             folium.Marker([mid_lat, mid_lon], icon=folium.DivIcon(html=f"""
-                <div style="
-                    background-color: white; 
-                    border: 1px solid black; 
-                    padding: 2px 4px; 
-                    border-radius: 3px; 
-                    font-size: {dim_size}pt; 
-                    color: black; 
-                    font-weight: bold; 
-                    white-space: nowrap; 
-                    text-align: center;
-                    display: inline-block;
-                    box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-                ">
+                <div style="background:white; border:1px solid #1e293b; padding:2px 4px; border-radius:4px; font-size:{dim_size}pt; color:black; font-weight:bold; white-space:nowrap; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);">
                     {row['Bearing']}<br>{row['Distance']}m
                 </div>""")).add_to(m)
 
     folium_static(m, width=1300, height=650)
     st.dataframe(df[['STN', 'Distance', 'Bearing']], use_container_width=True)
-
 else:
-    st.info("System Ready. Please upload your 'point.csv' file.")
+    st.info("System Ready. Please upload your survey points.")
