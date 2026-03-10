@@ -18,7 +18,7 @@ if "area_calculated" not in st.session_state:
 # --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="PUO GIS PRO | Tamilkumaran", layout="wide")
 
-# --- 3. UI CSS (Advanced Styling) ---
+# --- 3. UI CSS (Precision UI) ---
 st.markdown("""
     <style>
     .stApp {
@@ -33,27 +33,25 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
     
-    /* Centered Login Card */
     .login-card {
         background: rgba(255, 255, 255, 0.07);
         backdrop-filter: blur(20px);
-        padding: 60px;
+        padding: 40px;
         border-radius: 30px;
         border: 2px solid rgba(56, 189, 248, 0.3);
         text-align: center;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        width: 100%;
+        max-width: 600px;
+        margin: 50px auto;
+        display: block;
     }
 
-    /* Wide Logo Container */
-    .logo-container {
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        margin-bottom: 30px;
+    .login-card img {
+        max-width: 100% !important;
+        height: auto !important;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
     }
     
     .hero-container {
@@ -93,16 +91,15 @@ else:
 
 # --- 5. LOGIN GATE ---
 if not st.session_state.logged_in:
-    # Creating a wide central column
-    _, center_col, _ = st.columns([0.5, 2, 0.5])
+    _, center_col, _ = st.columns([0.2, 1, 0.2])
     with center_col:
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        
-        # Displaying the logo wide and centered
-        st.image(logo_data, width=500)
-        
-        st.markdown("<h1 style='color:#38bdf8; font-size:45px; margin-top:20px; margin-bottom:5px;'>CORE GEOMATIK SYSTEM</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='color:#94a3b8; font-size:18px; margin-bottom:30px;'>Authorized Admin Access Only</p>", unsafe_allow_html=True)
+        st.markdown(f'''
+            <div class="login-card">
+                <img src="{logo_data}">
+                <h1 style="color:#38bdf8; font-size:40px; margin-top:20px;">CORE GEOMATIK SYSTEM</h1>
+                <p style="color:#94a3b8; font-size:18px;">Authorized Admin Access Only</p>
+            </div>
+        ''', unsafe_allow_html=True)
         
         user_input = st.text_input("Username", placeholder="Admin")
         pass_input = st.text_input("Security Key", type="password", placeholder="12345678")
@@ -112,8 +109,7 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.rerun()
             else:
-                st.error("Access Denied: Invalid Credentials")
-        st.markdown('</div>', unsafe_allow_html=True)
+                st.error("Invalid Credentials")
     st.stop()
 
 # --- 6. MAIN HEADER ---
@@ -190,10 +186,21 @@ if uploaded_file:
 
     folium.plugins.MiniMap().add_to(m)
     folium.plugins.MeasureControl(position='topleft').add_to(m)
+    
+    # White Polygon Boundary
     folium.Polygon(locations=[[r['lat'], r['lon']] for _, r in df.iterrows()], color="white", weight=3, fill=True, fill_opacity=0.1).add_to(m)
 
     for i, row in df.iterrows():
-        folium.CircleMarker(location=[row['lat'], row['lon']], radius=5, color="red", fill=True).add_to(m)
+        # PROFESSIONAL HOVER: Displays E and N coordinates
+        hover_text = f"STN: {int(row['STN'])} | E: {row['E']:.3f}, N: {row['N']:.3f}"
+        folium.CircleMarker(
+            location=[row['lat'], row['lon']], 
+            radius=6, 
+            color="red", 
+            fill=True,
+            tooltip=folium.Tooltip(hover_text, sticky=True)
+        ).add_to(m)
+
         if label_mode:
             folium.Marker([row['lat'], row['lon']], icon=folium.DivIcon(html=f'<div style="font-size:10pt; color:white; font-weight:bold; text-shadow:1px 1px 2px black;">{int(row["STN"])}</div>')).add_to(m)
             next_p = df.iloc[(i + 1) % len(df)]
